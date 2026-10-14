@@ -46,7 +46,7 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     to_worker_response(core_res)
 }
 
-async fn to_core_request(req: Request) -> Result<CoreRequest> {
+async fn to_core_request(mut req: Request) -> Result<CoreRequest> {
     let method = Method::parse(req.method().as_ref())
         .ok_or_else(|| Error::RustError("unsupported method".into()))?;
     let url = req.url()?;

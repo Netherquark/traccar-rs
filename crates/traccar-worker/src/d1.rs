@@ -9,14 +9,17 @@
 // Queries push predicates down with SQLite's `json_extract`, which keeps
 // position-history scans server-side. Instants are stored as UTC ISO-8601 text,
 // which SQLite compares in chronological order.
+//
+// D1 futures are not `Send` (JsFuture uses Rc internally), so every call is
+// wrapped in `worker::send::SendFuture` to satisfy the `async_trait` bound.
 
-use async_trait::async_trait;
 use serde::Deserialize;
+use wasm_bindgen::JsValue;
 use serde_json::Value;
 use traccar_core::error::{Error, Result};
 use traccar_core::model::Id;
 use traccar_core::store::{Filter, Store};
-use wasm_bindgen::JsValue;
+use worker::send::SendFuture;
 use worker::*;
 
 pub struct D1Store {
@@ -95,71 +98,95 @@ struct IdRow {
     id: i64,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Store for D1Store {
     async fn insert(&self, kind: &str, obj: Value) -> Result<Id> {
-        let next: IdRow = self
-            .db
-            .prepare(
-                "INSERT INTO counters(kind, value) VALUES (?1, 1) \
-                 ON CONFLICT(kind) DO UPDATE SET value = value + 1 RETURNING value AS id",
-            )
-            .bind(&[JsValue::from_str(kind)])
-            .map_err(to_core)?
-            .first(None)
-            .await
-            .map_err(to_core)?
-            .ok_or_else(|| Error::internal("counter did not return an id"))?;
+        let next: IdRow = SendFuture::new(async {
+            self.db
+                .prepare(
+                    "INSERT INTO counters(kind, value) VALUES (?1, 1) \
+                     ON CONFLICT(kind) DO UPDATE SET value = value + 1 RETURNING value AS id",
+                )
+                .bind(&[JsValue::from_str(kind)])
+                .map_err(to_core)?
+                .first(None)
+                .await
+                .map_err(to_core)?
+                .ok_or_else(|| Error::internal("counter did not return an id"))
+        })
+        .await?;
 
         let mut obj = obj;
         if let Some(map) = obj.as_object_mut() {
             map.insert("id".into(), Value::from(next.id));
         }
-        self.db
-            .prepare("INSERT INTO objects(kind, id, data) VALUES (?1, ?2, ?3)")
-            .bind(&[JsValue::from_str(kind), JsValue::from_f64(next.id as f64), JsValue::from_str(&obj.to_string())])
-            .map_err(to_core)?
-            .run()
-            .await
-            .map_err(to_core)?;
+        SendFuture::new(async {
+            self.db
+                .prepare("INSERT INTO objects(kind, id, data) VALUES (?1, ?2, ?3)")
+                .bind(&[
+                    JsValue::from_str(kind),
+                    JsValue::from_f64(next.id as f64),
+                    JsValue::from_str(&obj.to_string()),
+                ])
+                .map_err(to_core)?
+                .run()
+                .await
+                .map_err(to_core)
+                .map(|_| ())
+        })
+        .await?;
         Ok(next.id)
     }
 
     async fn get(&self, kind: &str, id: Id) -> Result<Option<Value>> {
-        let row: Option<DataRow> = self
-            .db
-            .prepare("SELECT data FROM objects WHERE kind = ?1 AND id = ?2")
-            .bind(&[JsValue::from_str(kind), JsValue::from_f64(id as f64)])
-            .map_err(to_core)?
-            .first(None)
-            .await
-            .map_err(to_core)?;
+        let row: Option<DataRow> = SendFuture::new(async {
+            self.db
+                .prepare("SELECT data FROM objects WHERE kind = ?1 AND id = ?2")
+                .bind(&[JsValue::from_str(kind), JsValue::from_f64(id as f64)])
+                .map_err(to_core)?
+                .first(None)
+                .await
+                .map_err(to_core)
+        })
+        .await?;
         match row {
-            Some(r) => serde_json::from_str(&r.data).map(Some).map_err(|e| Error::internal(e.to_string())),
+            Some(r) => serde_json::from_str(&r.data)
+                .map(Some)
+                .map_err(|e| Error::internal(e.to_string())),
             None => Ok(None),
         }
     }
 
     async fn update(&self, kind: &str, id: Id, obj: Value) -> Result<()> {
-        self.db
-            .prepare("UPDATE objects SET data = ?1 WHERE kind = ?2 AND id = ?3")
-            .bind(&[JsValue::from_str(&obj.to_string()), JsValue::from_str(kind), JsValue::from_f64(id as f64)])
-            .map_err(to_core)?
-            .run()
-            .await
-            .map_err(to_core)?;
-        Ok(())
+        SendFuture::new(async {
+            self.db
+                .prepare("UPDATE objects SET data = ?1 WHERE kind = ?2 AND id = ?3")
+                .bind(&[
+                    JsValue::from_str(&obj.to_string()),
+                    JsValue::from_str(kind),
+                    JsValue::from_f64(id as f64),
+                ])
+                .map_err(to_core)?
+                .run()
+                .await
+                .map_err(to_core)
+                .map(|_| ())
+        })
+        .await
     }
 
     async fn delete(&self, kind: &str, id: Id) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM objects WHERE kind = ?1 AND id = ?2")
-            .bind(&[JsValue::from_str(kind), JsValue::from_f64(id as f64)])
-            .map_err(to_core)?
-            .run()
-            .await
-            .map_err(to_core)?;
-        Ok(())
+        SendFuture::new(async {
+            self.db
+                .prepare("DELETE FROM objects WHERE kind = ?1 AND id = ?2")
+                .bind(&[JsValue::from_str(kind), JsValue::from_f64(id as f64)])
+                .map_err(to_core)?
+                .run()
+                .await
+                .map_err(to_core)
+                .map(|_| ())
+        })
+        .await
     }
 
     async fn list(&self, kind: &str, filter: &Filter) -> Result<Vec<Value>> {
@@ -179,15 +206,18 @@ impl Store for D1Store {
             sql.push_str(&format!(" LIMIT -1 OFFSET {offset}"));
         }
 
-        let result = self
-            .db
-            .prepare(&sql)
-            .bind(&params)
-            .map_err(to_core)?
-            .all()
-            .await
-            .map_err(to_core)?;
-        let rows: Vec<DataRow> = result.results().map_err(to_core)?;
+        let rows: Vec<DataRow> = SendFuture::new(async {
+            self.db
+                .prepare(&sql)
+                .bind(&params)
+                .map_err(to_core)?
+                .all()
+                .await
+                .map_err(to_core)?
+                .results()
+                .map_err(to_core)
+        })
+        .await?;
         rows.into_iter()
             .map(|r| serde_json::from_str(&r.data).map_err(|e| Error::internal(e.to_string())))
             .collect()
@@ -197,14 +227,16 @@ impl Store for D1Store {
         let mut params: Vec<JsValue> = Vec::new();
         let mut sql = String::from("SELECT COUNT(*) AS n FROM objects");
         sql.push_str(&self.build_where(kind, filter, &mut params));
-        let row: Option<CountRow> = self
-            .db
-            .prepare(&sql)
-            .bind(&params)
-            .map_err(to_core)?
-            .first(None)
-            .await
-            .map_err(to_core)?;
+        let row: Option<CountRow> = SendFuture::new(async {
+            self.db
+                .prepare(&sql)
+                .bind(&params)
+                .map_err(to_core)?
+                .first(None)
+                .await
+                .map_err(to_core)
+        })
+        .await?;
         Ok(row.map(|r| r.n).unwrap_or(0))
     }
 }
