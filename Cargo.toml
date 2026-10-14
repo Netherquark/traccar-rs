@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# traccar-rs — an API-compatible reimplementation of the Traccar tracking
+# server, written in Rust and designed to run on Cloudflare Workers (wasm32).
+#
+# Reference implementation: https://github.com/traccar/traccar (Apache-2.0).
+# The wire contract is Traccar's own OpenAPI 3.1 document (see docs/openapi.yaml).
+
+[workspace]
+resolver = "2"
+members = ["crates/traccar-core", "crates/traccar-worker"]
+
+# The Cloudflare Worker crate needs the wasm32 target and a large dependency
+# graph. Keep it out of the default members so `cargo test` / `cargo build` at
+# the workspace root only touch the portable, native-testable core.
+default-members = ["crates/traccar-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/Netherquark/traccar-rs"
+authors = ["traccar-rs contributors"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+hex = "0.4"
+getrandom = "0.2"
+async-trait = "0.1"

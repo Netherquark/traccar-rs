@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "traccar-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cloudflare Workers adapter for traccar-core (D1 + Durable Objects)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+traccar-core = { path = "../traccar-core" }
+serde.workspace = true
+serde_json.workspace = true
+worker = { version = "0.5", features = ["d1"] }
+getrandom = { version = "0.2", features = ["js"] }
+async-trait.workspace = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
