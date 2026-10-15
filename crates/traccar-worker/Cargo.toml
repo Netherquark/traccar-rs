@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 traccar-core = { path = "../traccar-core" }
 serde.workspace = true
 serde_json.workspace = true
-worker = { version = "0.5", features = ["d1"] }
+worker = { version = "0.8", features = ["d1"] }
 getrandom = { version = "0.2", features = ["js"] }
 async-trait.workspace = true
 

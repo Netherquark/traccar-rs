@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Cloudflare Worker deployment for traccar-rs.
+# Build:  cargo build -p traccar-worker --target wasm32-unknown-unknown --release
+#         then: worker-build --release (from crates/traccar-worker)
+# Deploy: wrangler deploy
+
+name = "traccar-rs"
+main = "crates/traccar-worker/build/worker/shim.mjs"
+compatibility_date = "2026-10-14"
+
+[build]
+command = "cd crates/traccar-worker && cargo install -q worker-build && worker-build --release"
+
+# D1 relational truth.
+[[d1_databases]]
+binding = "DB"
+database_name = "traccar-rs"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+BASE_URL = "https://traccar.example.com"
+REGISTRATION = "false"
+
+# Set secrets out of band:
+#   wrangler secret put TOKEN_SECRET
+
+# Optional retention window (days). Unset => no deletion ever happens.
+# RETENTION_DAYS = "365"
+
+[triggers]
+crons = ["0 3 * * *"]
