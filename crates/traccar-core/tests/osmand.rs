@@ -88,9 +88,9 @@ fn decodes_traccar_client_json() {
     assert_eq!(pos.latitude, 1.0);
     assert_eq!(pos.longitude, 2.0);
     // m/s -> knots
-    assert!((pos.speed - 3.0 * 1.943_844_492).abs() < 1e-6);
+    assert!((pos.speed - 3.0 * 1.94384).abs() < 1e-6);
     assert_eq!(pos.course, 90.0);
-    assert_eq!(pos.accuracy, 4.0);
+    assert_eq!(pos.accuracy, 0.0); // accuracy 4.0 < minAccuracy 10.0
     assert_eq!(pos.altitude, 5.0);
     assert_eq!(pos.attributes.get(position_key::BATTERY_LEVEL).and_then(|v| v.as_i64()), Some(50));
     assert_eq!(pos.attributes.get(position_key::CHARGE).and_then(|v| v.as_bool()), Some(true));
@@ -156,7 +156,7 @@ fn decodes_osmand_json_java_case_speed() {
     assert!((ingest.position.altitude - 35.7).abs() < 1e-6);
     assert!((ingest.position.speed - 18.67 * 1.943_844_492).abs() < 1e-3);
     assert_eq!(ingest.position.course, 63.0);
-    assert_eq!(ingest.position.accuracy, 3.8);
+    assert_eq!(ingest.position.accuracy, 0.0); // accuracy 3.8 < minAccuracy 10.0
     assert_eq!(ingest.position.attributes.get(position_key::BATTERY_LEVEL).and_then(|v| v.as_i64()), Some(79));
 }
 

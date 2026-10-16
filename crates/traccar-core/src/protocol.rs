@@ -249,7 +249,7 @@ fn decode_json(raw: &RawIngest) -> Result<Ingest> {
         position.longitude = coords.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
         if let Some(speed) = coords.get("speed").and_then(|v| v.as_f64()) {
             if speed >= 0.0 {
-                position.speed = speed * 1.943_844_492; // m/s -> knots
+                position.speed = speed * 1.94384; // m/s -> knots
             }
         }
         if let Some(heading) = coords.get("heading").and_then(|v| v.as_f64()) {
@@ -258,7 +258,9 @@ fn decode_json(raw: &RawIngest) -> Result<Ingest> {
             }
         }
         if let Some(accuracy) = coords.get("accuracy").and_then(|v| v.as_f64()) {
-            position.accuracy = accuracy;
+            if accuracy >= 10.0 {
+                position.accuracy = accuracy;
+            }
         }
         if let Some(altitude) = coords.get("altitude").and_then(|v| v.as_f64()) {
             position.altitude = altitude;
